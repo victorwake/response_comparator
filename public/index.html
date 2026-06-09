@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Response Comparator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>API Response Comparator</h1>
+    <small>Compara respuestas de dos APIs</small>
+  </header>
+
+  <main>
+    <div class="error-message" id="errorMessage"></div>
+
+    <div class="config-grid">
+      <div class="config-panel">
+        <h2>API 1 <span class="badge">Request</span></h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Método</label>
+            <select id="method1">
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:3">
+            <label>URL</label>
+            <input type="url" id="url1" placeholder="https://api.example.com/endpoint">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Body (JSON)</label>
+          <textarea id="body1" placeholder='{"key": "value"}'></textarea>
+        </div>
+        <div class="form-group">
+          <label>Headers</label>
+          <div class="headers-container" id="headers1">
+            <div class="header-row">
+              <input class="header-key" placeholder="Authorization" value="Authorization">
+              <input class="header-value" placeholder="Bearer token...">
+              <button class="remove-header" onclick="removeHeader(this)">✕</button>
+            </div>
+            <div class="header-row">
+              <input class="header-key" placeholder="session_token">
+              <input class="header-value" placeholder="...">
+              <button class="remove-header" onclick="removeHeader(this)">✕</button>
+            </div>
+          </div>
+          <button class="add-header" onclick="addHeader('headers1')">+ Agregar header</button>
+        </div>
+      </div>
+
+      <div class="config-panel">
+        <h2>API 2 <span class="badge">Request</span></h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Método</label>
+            <select id="method2">
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:3">
+            <label>URL</label>
+            <input type="url" id="url2" placeholder="https://api.example.com/endpoint">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Body (JSON)</label>
+          <textarea id="body2" placeholder='{"key": "value"}'></textarea>
+        </div>
+        <div class="form-group">
+          <label>Headers</label>
+          <div class="headers-container" id="headers2">
+            <div class="header-row">
+              <input class="header-key" placeholder="Authorization" value="Authorization">
+              <input class="header-value" placeholder="Bearer token...">
+              <button class="remove-header" onclick="removeHeader(this)">✕</button>
+            </div>
+            <div class="header-row">
+              <input class="header-key" placeholder="session_token">
+              <input class="header-value" placeholder="...">
+              <button class="remove-header" onclick="removeHeader(this)">✕</button>
+            </div>
+          </div>
+          <button class="add-header" onclick="addHeader('headers2')">+ Agregar header</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="options-bar">
+      <div>
+        <label>Ignorar campos</label>
+        <input type="text" id="ignoreFields" placeholder="timestamp, date, id, version">
+      </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="ignoreOrder">
+        <label for="ignoreOrder">Ignorar orden en arrays</label>
+      </div>
+      <button class="btn-compare" id="btnCompare" onclick="compare()">▶ Comparar</button>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="margin-top:0.5rem;color:#94a3b8;font-size:0.85rem">Ejecutando llamados y comparando...</p>
+    </div>
+
+    <div class="results-section" id="resultsSection">
+      <div class="results-header" id="resultsHeader"></div>
+
+      <div class="results-grid">
+        <div class="response-panel" id="response1Panel">
+          <div class="panel-header">
+            <span>API 1 - Response</span>
+            <span class="status-code" id="status1"></span>
+            <span id="elapsed1"></span>
+          </div>
+          <pre id="responseBody1"></pre>
+        </div>
+        <div class="response-panel" id="response2Panel">
+          <div class="panel-header">
+            <span>API 2 - Response</span>
+            <span class="status-code" id="status2"></span>
+            <span id="elapsed2"></span>
+          </div>
+          <pre id="responseBody2"></pre>
+        </div>
+      </div>
+
+      <div class="diff-list" id="diffList">
+        <h3>Diferencias encontradas</h3>
+        <div id="diffItems"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function addHeader(containerId) {
+      const container = document.getElementById(containerId);
+      const row = document.createElement('div');
+      row.className = 'header-row';
+      row.innerHTML = `
+        <input class="header-key" placeholder="Header name">
+        <input class="header-value" placeholder="Header value">
+        <button class="remove-header" onclick="removeHeader(this)">✕</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function removeHeader(btn) {
+      const container = btn.closest('.headers-container');
+      const rows = container.querySelectorAll('.header-row');
+      if (rows.length > 1) {
+        btn.parentElement.remove();
+      }
+    }
+
+    function collectHeaders(containerId) {
+      const container = document.getElementById(containerId);
+      const headers = {};
+      const rows = container.querySelectorAll('.header-row');
+      rows.forEach(row => {
+        const key = row.querySelector('.header-key').value.trim();
+        const value = row.querySelector('.header-value').value.trim();
+        if (key && value) {
+          headers[key] = value;
+        }
+      });
+      return headers;
+    }
+
+    function getConfig(prefix) {
+      const method = document.getElementById('method' + prefix).value;
+      const url = document.getElementById('url' + prefix).value.trim();
+      const bodyText = document.getElementById('body' + prefix).value.trim();
+      const headers = collectHeaders('headers' + prefix);
+
+      const config = { method, url, headers };
+      if (bodyText && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        try {
+          config.body = JSON.parse(bodyText);
+        } catch (e) {
+          showError('Body ' + prefix + ' no es JSON válido: ' + e.message);
+          return null;
+        }
+      }
+      return config;
+    }
+
+    async function compare() {
+      const errorEl = document.getElementById('errorMessage');
+      errorEl.classList.remove('visible');
+      errorEl.textContent = '';
+
+      const api1 = getConfig('1');
+      const api2 = getConfig('2');
+      if (!api1 || !api2) return;
+
+      if (!api1.url) { showError('URL de API 1 es requerida'); return; }
+      if (!api2.url) { showError('URL de API 2 es requerida'); return; }
+
+      document.getElementById('loading').classList.add('visible');
+      document.getElementById('btnCompare').disabled = true;
+      document.getElementById('resultsSection').classList.remove('visible');
+
+      const ignoreFields = document.getElementById('ignoreFields').value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const options = { ignoreFields };
+      if (document.getElementById('ignoreOrder').checked) {
+        options.ignoreOrder = true;
+      }
+
+      try {
+        const res = await fetch('/api/compare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api1, api2, options }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error + (data.message ? ': ' + data.message : ''));
+          return;
+        }
+
+        renderResults(data);
+      } catch (err) {
+        showError('Error de conexión: ' + err.message);
+      } finally {
+        document.getElementById('loading').classList.remove('visible');
+        document.getElementById('btnCompare').disabled = false;
+      }
+    }
+
+    function renderResults(data) {
+      document.getElementById('resultsSection').classList.add('visible');
+
+      renderHeader(data);
+      renderResponse('1', data.api1Response);
+      renderResponse('2', data.api2Response);
+      renderDiffs(data.differences);
+    }
+
+    function renderHeader(data) {
+      const header = document.getElementById('resultsHeader');
+      const badgeClass = data.equal ? 'match' : 'no-match';
+      const badgeText = data.equal ? '✓ IGUALES' : '✗ DIFERENTES';
+      const elapsed1 = data.api1Response.elapsed;
+      const elapsed2 = data.api2Response.elapsed;
+
+      header.innerHTML = `
+        <span class="status-badge ${badgeClass}">${badgeText}</span>
+        <div class="stats">
+          <span>API 1: ${data.api1Response.status} (${elapsed1}ms)</span>
+          <span>API 2: ${data.api2Response.status} (${elapsed2}ms)</span>
+          <span>Diferencias: ${data.summary.totalDiffs}</span>
+        </div>
+      `;
+    }
+
+    function renderResponse(prefix, response) {
+      document.getElementById('status' + prefix).textContent = response.status + ' ' + response.statusText;
+      document.getElementById('elapsed' + prefix).textContent = response.elapsed + 'ms';
+
+      const statusEl = document.getElementById('status' + prefix);
+      statusEl.className = 'status-code';
+      if (response.status < 300) statusEl.classList.add('success');
+      else if (response.status < 400) statusEl.classList.add('redirect');
+      else statusEl.classList.add('error');
+
+      const body = JSON.stringify(response.body, null, 2);
+      document.getElementById('responseBody' + prefix).textContent = body;
+    }
+
+    function renderDiffs(differences) {
+      const container = document.getElementById('diffItems');
+      container.innerHTML = '';
+
+      if (!differences || differences.length === 0) {
+        container.innerHTML = '<div class="empty-state">Las respuestas son idénticas. No hay diferencias.</div>';
+        return;
+      }
+
+      differences.forEach(d => {
+        const item = document.createElement('div');
+        item.className = 'diff-item';
+
+        const iconMap = {
+          'changed': '~',
+          'added': '+',
+          'removed': '−',
+          'array_change': '⊕',
+        };
+
+        if (d.type === 'changed') {
+          item.classList.add('diff-changed');
+          item.innerHTML = `
+            <span class="diff-icon">${iconMap.changed}</span>
+            <span class="diff-path">${d.path}</span>
+            <span class="diff-detail">
+              <span style="color:#f87171">${formatValue(d.old)}</span>
+              <span style="color:#64748b"> → </span>
+              <span style="color:#4ade80">${formatValue(d.new)}</span>
+            </span>
+          `;
+        } else if (d.type === 'added') {
+          item.classList.add('diff-added');
+          item.innerHTML = `
+            <span class="diff-icon">${iconMap.added}</span>
+            <span class="diff-path">${d.path}</span>
+            <span class="diff-detail">
+              <span style="color:#4ade80">${formatValue(d.new)}</span>
+              <span style="color:#64748b;font-size:0.7rem"> (solo en API 2)</span>
+            </span>
+          `;
+        } else if (d.type === 'removed') {
+          item.classList.add('diff-removed');
+          item.innerHTML = `
+            <span class="diff-icon">${iconMap.removed}</span>
+            <span class="diff-path">${d.path}</span>
+            <span class="diff-detail">
+              <span style="color:#f87171">${formatValue(d.old)}</span>
+              <span style="color:#64748b;font-size:0.7rem"> (solo en API 1)</span>
+            </span>
+          `;
+        } else if (d.type === 'array_change') {
+          item.classList.add('diff-array');
+          const changeIcon = d.change.kind === 'N' ? '+' : d.change.kind === 'D' ? '−' : '~';
+          const changeColor = d.change.kind === 'N' ? '#4ade80' : d.change.kind === 'D' ? '#f87171' : '#fbbf24';
+          item.innerHTML = `
+            <span class="diff-icon">${iconMap.array_change}</span>
+            <span class="diff-path">${d.path}[${d.index}]</span>
+            <span class="diff-detail">
+              <span style="color:${changeColor}">${changeIcon} ${formatValue(d.change.new ?? d.change.old)}</span>
+            </span>
+          `;
+        }
+
+        container.appendChild(item);
+      });
+    }
+
+    function formatValue(val) {
+      if (val === null || val === undefined) return '<span style="color:#64748b">null</span>';
+      if (typeof val === 'string') return `"${val.length > 80 ? val.substring(0, 80) + '...' : val}"`;
+      if (typeof val === 'object') return JSON.stringify(val).length > 80
+        ? JSON.stringify(val).substring(0, 80) + '...'
+        : JSON.stringify(val);
+      return String(val);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMessage');
+      el.textContent = msg;
+      el.classList.add('visible');
+    }
+  </script>
+</body>
+</html>
